@@ -1,6 +1,8 @@
 """
-Модуль для управления YOLO моделями: загрузка, дообучение, оптимизация
+models_manager.py - Модуль для управления YOLO моделями
+Содержит классы для дообучения и оптимизации моделей
 """
+
 import os
 import time
 import yaml
@@ -8,12 +10,19 @@ from ultralytics import YOLO
 import tkinter as tk
 from tkinter import messagebox
 
+
 class ModelTrainer:
     def __init__(self, base_model_path):
+        """
+        Инициализация тренера моделей
+        """
         self.base_model_path = base_model_path
         self.training_results = {}
     
     def finetune(self, dataset_path, epochs=10, imgsz=640):
+        """
+        Запуск процесса дообучения модели
+        """
         try:
             print(f"Начинаю дообучение модели на {epochs} эпохах...")
             
@@ -24,6 +33,7 @@ class ModelTrainer:
                     'error': f'Директория датасета не найдена: {dataset_path}'
                 }
             
+            # Создание файла конфигурации
             yaml_path = os.path.join(dataset_path, "dataset.yaml")
             if not os.path.exists(yaml_path):
                 config_content = f"""path: {os.path.abspath(dataset_path)}
@@ -36,18 +46,21 @@ names: ['crayfish']"""
                 
                 with open(yaml_path, 'w') as f:
                     f.write(config_content)
-                print(f"Создан YAML файл: {yaml_path}")
+                print(f"Создан файл: {yaml_path}")
             
+            # Загрузка конфигурации
             with open(yaml_path, 'r') as f:
                 config = yaml.safe_load(f)
                 print(f"Конфигурация датасета: {config}")
             
-            print(f"Загружаю модель: {self.base_model_path}")
+            # Загрузка базовой модели
+            print(f"Загружена модель: {self.base_model_path}")
             model = YOLO(self.base_model_path)
             
             start_time = time.time()
             
-            print("Запускаю обучение...")
+            # Запуск обучения
+            print("Запуск обучения")
             results = model.train(
                 data=yaml_path,
                 epochs=epochs,
@@ -62,6 +75,7 @@ names: ['crayfish']"""
             
             training_time = time.time() - start_time
             
+            # Формирование результатов
             self.training_results = {
                 'status': 'COMPLETED',
                 'training_time': training_time,
@@ -97,6 +111,7 @@ names: ['crayfish']"""
 
 class ModelOptimizer:
     def __init__(self):
+        """Инициализация оптимизатора моделей"""
         self.optimization_methods = ['int8', 'fp16', 'prune', 'onnx']
         self.optimization_results = {}
     
@@ -104,6 +119,7 @@ class ModelOptimizer:
         try:
             print(f"Оптимизирую модель методом: {method}")
             
+            # Проверка существования модели
             if not os.path.exists(model_path):
                 return {
                     'status': 'FAILED',
@@ -111,13 +127,13 @@ class ModelOptimizer:
                     'error': f'Файл модели не найден: {model_path}'
                 }
             
+            # Определение пути для сохранения
             if output_path is None:
                 model_name = os.path.basename(model_path).replace('.pt', '')
                 ext = 'onnx' if method == 'onnx' else 'pt'
                 output_path = f"optimized_{model_name}_{method}.{ext}"
             
             original_size = os.path.getsize(model_path)
-            
             time.sleep(2)
             
             if method == 'int8':
@@ -130,14 +146,13 @@ class ModelOptimizer:
                 optimized_size = original_size * 0.8
             else:
                 optimized_size = original_size
-            
             with open(output_path, 'wb') as f:
                 f.write(b'optimized_model_data')
-            
             os.truncate(output_path, int(optimized_size))
             
             compression_ratio = optimized_size / original_size if original_size > 0 else 0
             
+            # Формирование результатов
             result = {
                 'status': 'COMPLETED',
                 'method': method,

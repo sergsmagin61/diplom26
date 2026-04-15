@@ -1,3 +1,5 @@
+# telegram_bot.py - Модуль Telegram бота для удаленного управления
+
 import os
 import time
 import cv2
@@ -8,8 +10,12 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
+
 class TelegramBotManager:
+    # Класс для управления Telegram ботом
+    
     def __init__(self, detector_app, token=None):
+        # Инициализация менеджера Telegram бота
         self.detector = detector_app
         self.bot = None
         self.bot_thread = None
@@ -19,6 +25,7 @@ class TelegramBotManager:
         if token:
             self.initialize_bot(token)
     
+    # Инициализация бота с указанным токеном
     def initialize_bot(self, token):
         try:
             self.bot = telebot.TeleBot(token, threaded=False)
@@ -28,8 +35,10 @@ class TelegramBotManager:
             print(f"Ошибка инициализации бота: {e}")
             return False
     
+    # Настройка обработчиков команд бота
     def setup_handlers(self):
         
+        # Обработчик команды /start и /help
         @self.bot.message_handler(commands=['start', 'help'])
         def send_welcome(message):
             welcome_text = """
@@ -51,6 +60,7 @@ Crayfish AI Studio Bot
             except Exception as e:
                 print(f"Ошибка отправки welcome: {e}")
         
+        # Обработчик команды /detect
         @self.bot.message_handler(commands=['detect'])
         def handle_detect(message):
             try:
@@ -58,6 +68,7 @@ Crayfish AI Studio Bot
             except Exception as e:
                 print(f"Ошибка команды detect: {e}")
         
+        # Обработчик получения фото
         @self.bot.message_handler(content_types=['photo'])
         def handle_photo(message):
             try:
@@ -69,6 +80,7 @@ Crayfish AI Studio Bot
                 except:
                     pass
         
+        # Обработчик команды /stats
         @self.bot.message_handler(commands=['stats'])
         def handle_stats(message):
             try:
@@ -76,6 +88,7 @@ Crayfish AI Studio Bot
             except Exception as e:
                 print(f"Ошибка команды stats: {e}")
         
+        # Обработчик команды /charts
         @self.bot.message_handler(commands=['charts'])
         def handle_charts(message):
             try:
@@ -83,6 +96,7 @@ Crayfish AI Studio Bot
             except Exception as e:
                 print(f"Ошибка команды charts: {e}")
         
+        # Обработчик команды /export
         @self.bot.message_handler(commands=['export'])
         def handle_export(message):
             try:
@@ -90,6 +104,7 @@ Crayfish AI Studio Bot
             except Exception as e:
                 print(f"Ошибка команды export: {e}")
         
+        # Обработчик команды /status
         @self.bot.message_handler(commands=['status'])
         def handle_status(message):
             try:
@@ -97,6 +112,7 @@ Crayfish AI Studio Bot
             except Exception as e:
                 print(f"Ошибка команды status: {e}")
         
+        # Обработчик команды /info
         @self.bot.message_handler(commands=['info'])
         def handle_info(message):
             try:
@@ -109,31 +125,37 @@ Crayfish AI Studio Bot
             except Exception as e:
                 print(f"Ошибка команды info: {e}")
     
+    # Обработка фото: детекция и отправка результата
     def process_photo(self, message):
         try:
             self.bot.reply_to(message, "Загружаю и анализирую изображение...")
             
+            # Скачивание фото
             file_info = self.bot.get_file(message.photo[-1].file_id)
-            
             downloaded_file = self.bot.download_file(file_info.file_path)
             
+            # Создание временной папки
             os.makedirs("temp", exist_ok=True)
             temp_path = f"temp/tg_photo_{message.chat.id}_{int(time.time())}.jpg"
             
+            # Сохранение временного файла
             with open(temp_path, 'wb') as f:
                 f.write(downloaded_file)
             
+            # Проверка размера файла (максимум 10MB)
             file_size = os.path.getsize(temp_path)
             if file_size > 10 * 1024 * 1024:
                 self.bot.reply_to(message, "Файл слишком большой (максимум 10MB)")
                 os.remove(temp_path)
                 return
             
+            # Проверка загрузки модели
             if self.detector.model is None:
                 self.bot.reply_to(message, "Модель не загружена. Пожалуйста, подождите...")
                 os.remove(temp_path)
                 return
             
+            # Запуск детекции
             start_time = time.perf_counter()
             
             try:
@@ -150,17 +172,23 @@ Crayfish AI Studio Bot
             end_time = time.perf_counter()
             inference_time_ms = (end_time - start_time) * 1000
             
+            # Обработка результатов детекции
             if results and len(results) > 0:
                 try:
                     img = results[0].orig_img.copy()
+                    detection_count = 0
+                    
+                    # Обработка OBB детекций (повернутые рамки)
                     if hasattr(results[0], 'obb') and results[0].obb is not None:
                         detection_count = len(results[0].obb)
                         print(f"Найдены OBB детекции: {detection_count}")
+                        
+                        # Отрисовка каждого обнаруженного рака
                         for i, obb in enumerate(results[0].obb):
                             try:
+                                # Отрисовка через точки углов
                                 if hasattr(obb, 'xyxyxyxy') and obb.xyxyxyxy is not None:
                                     corners = obb.xyxyxyxy[0].cpu().numpy().reshape((-1, 1, 2)).astype(np.int32)
-                                    
                                     cv2.polylines(img, [corners], isClosed=True, color=(0, 255, 0), thickness=2)
                                     
                                     cx = int(np.mean(corners[:, 0, 0]))
@@ -178,14 +206,16 @@ Crayfish AI Studio Bot
                                         cv2.putText(img, text, (cx - 50, cy - 20),
                                                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                                 
+                                # Отрисовка через xywhr
                                 elif hasattr(obb, 'xywhr') and obb.xywhr is not None:
                                     xywhr = obb.xywhr[0].cpu().numpy()
                                     cx, cy, w, h, angle = xywhr
-                                
+                                    
                                     rect = ((int(cx), int(cy)), (int(w), int(h)), angle * 180 / np.pi)
                                     box = cv2.boxPoints(rect)
                                     box = np.int32(box)
                                     cv2.drawContours(img, [box], 0, (0, 255, 0), 2)
+                                    
                                     if hasattr(obb, 'conf'):
                                         conf = obb.conf[0].item() if hasattr(obb.conf, '__len__') else obb.conf
                                         text = f"#{i+1}: {conf:.2f} {angle:.1f}°"
@@ -199,12 +229,15 @@ Crayfish AI Studio Bot
                         processed_img = img
                         
                     else:
+                        # Обработка обычных box детекций
                         processed_img = results[0].plot()
                         detection_count = len(results[0].boxes) if results[0].boxes else 0
                     
+                    # Сохранение изображения с результатами
                     result_path = f"temp/tg_result_{message.chat.id}_{int(time.time())}.jpg"
                     cv2.imwrite(result_path, processed_img)
                     
+                    # Сохранение лога инференса в БД
                     inference_data = {
                         'timestamp': datetime.now(),
                         'image_path': temp_path,
@@ -218,6 +251,7 @@ Crayfish AI Studio Bot
                     }
                     self.detector.db.save_ml_inference_log(inference_data)
                     
+                    # Отправка результата пользователю
                     with open(result_path, 'rb') as photo:
                         caption = f"Обнаружено раков: {detection_count}\n"
                         caption += f"Время анализа: {inference_time_ms:.1f} мс\n"
@@ -234,6 +268,7 @@ Crayfish AI Studio Bot
                             self.bot.send_photo(message.chat.id, photo)
                             self.bot.reply_to(message, caption)
                     
+                    # Очистка временных файлов
                     try:
                         os.remove(temp_path)
                         os.remove(result_path)
@@ -258,6 +293,7 @@ Crayfish AI Studio Bot
             except:
                 pass
     
+    # Отправка статистики базы данных
     def send_statistics(self, message):
         try:
             status = self.detector.db.check_database_status()
@@ -274,6 +310,7 @@ Crayfish AI Studio Bot
         except Exception as e:
             self.bot.reply_to(message, f"Ошибка получения статистики: {e}")
     
+    # Генерация и отправка графиков
     def send_charts(self, message):
         try:
             self.bot.reply_to(message, "Генерирую графики...")
@@ -294,12 +331,14 @@ Crayfish AI Studio Bot
         except Exception as e:
             self.bot.reply_to(message, f"Ошибка создания графиков: {e}")
     
+    # Генерация графиков на основе данных из БД
     def generate_charts(self):
         chart_paths = []
         
         try:
             os.makedirs("temp", exist_ok=True)
             
+            # График роста размеров по дням
             daily_stats = self.detector.db.get_daily_statistics()
             if not daily_stats.empty:
                 fig, ax = plt.subplots(figsize=(10, 6))
@@ -315,6 +354,7 @@ Crayfish AI Studio Bot
                 plt.close()
                 chart_paths.append(path1)
             
+            # График времени инференса по дням
             ml_stats = self.detector.db.get_ml_inference_stats()
             if not ml_stats.empty:
                 fig, ax = plt.subplots(figsize=(10, 6))
@@ -335,6 +375,7 @@ Crayfish AI Studio Bot
             
         return chart_paths
     
+    # Экспорт данных в CSV и отправка файла
     def send_export(self, message):
         try:
             self.bot.reply_to(message, "Подготавливаю данные для экспорта...")
@@ -363,6 +404,7 @@ Crayfish AI Studio Bot
         except Exception as e:
             self.bot.reply_to(message, f"Ошибка экспорта: {e}")
     
+    # Отправка статуса системы
     def send_status(self, message):
         try:
             status_text = "Статус системы\n\n"
@@ -390,12 +432,11 @@ Crayfish AI Studio Bot
         except Exception as e:
             self.bot.reply_to(message, f"Ошибка получения статуса: {e}")
     
+    # Запуск процесса polling для получения обновлений
     def start_polling(self):
         try:
             self.running = True
-            
             self.setup_handlers()
-            
             print("Telegram Bot запускается...")
             
             self.bot.polling(
@@ -409,6 +450,7 @@ Crayfish AI Studio Bot
             print(f"Ошибка работы бота: {e}")
             self.running = False
     
+    # Остановка Telegram бота
     def stop(self):
         self.running = False
         if self.bot:
